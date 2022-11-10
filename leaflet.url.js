@@ -1,41 +1,59 @@
-L.UrlUpdater = L.Handler.extend({
-    _previousHash : null,
-
-    initialize: function (map, options) {
-        this._map = map;
-    },
-
-    addHooks: function () {
-        _self = this;
-        this._map.on("moveend baselayerchange overlayadd overlayremove resize gis:url:update", this.urlUpdater);
-    },
-
-    removeHooks: function () {
-        this._map.off("moveend baselayerchange overlayadd overlayremove resize gis:url:update", this.urlUpdater);
-    },
-
-    urlUpdater: function() {
-        new Promise((resolve, reject) => {
-            const mapCenter = this.wrapLatLng(this.getCenter());
-            const hash = `z=${this.getZoom().toPrecision(2)}&c=${mapCenter.lat.toFixed(4)},${mapCenter.lng.toFixed(4)}&l=${this.layerControl.getOverlays().join("/")}`;
-            resolve(hash);
-        }).then((hash) => {
-            if (_self._previousHash === hash) return;
-            const baseUrl = window.location.href.split('#')[0];
-            window.location.replace(baseUrl + '#' + hash);
-            if (window.localStorage)
-                localStorage.setItem("hash", document.location.hash);
-            this.fire('gis:url:changeend', { current: hash, previous: _self._previousHash })
-            _self._previousHash = hash;
-        }).catch();
-    },
-    getLinkToPoint(sitename, latLng) {
-        const hash = `z=${_self._map.getZoom().toPrecision(2)}&c=${latLng.lat.toFixed(4)},${latLng.lng.toFixed(4)}&l=${_self._map.layerControl.getOverlays().join("/")}`;
-        return `${sitename}/#${hash}&p=${formatLatLng(latLng, SIGNED_DEGREES).replace(' ', ',')}`;
+var L;
+(function (L) {
+    class UrlUpdater extends L.Handler {
+        initialize(map, options) {
+            this._map = map;
+            map.urlUpdater = this;
+        }
+        addHooks() {
+            this._events = [
+                "moveend",
+                "baselayerchange",
+                "overlayadd",
+                "overlayremove",
+                "resize",
+                "gis:url:update"
+            ];
+            const events = this._events.join(" ");
+            this._map.on(events, this.updateUrlOnEvent);
+        }
+        removeHooks() {
+            const events = this._events.join(" ");
+            this._map.off(events, this.updateUrlOnEvent);
+            this._events = null;
+        }
+        updateUrlOnEvent() {
+            new Promise((resolve, reject) => {
+                const mapCenter = this.wrapLatLng(this.getCenter());
+                const z = this.getZoom().toPrecision(2);
+                const cLat = mapCenter.lat.toFixed(4);
+                const cLng = mapCenter.lng.toFixed(4);
+                const overlays = this.layerControl.getOverlays().join("/");
+                const hash = `z=${z}&c=${cLat},${cLng}&l=${overlays}`;
+                resolve(hash);
+            }).then((hash) => {
+                if (this.urlUpdater._previousHash === hash)
+                    return;
+                const baseUrl = window.location.href.split('#')[0];
+                window.location.replace(baseUrl + '#' + hash);
+                if (window.localStorage)
+                    localStorage.setItem("hash", document.location.hash);
+                this.fire('gis:url:changeend', { current: hash, previous: this.urlUpdater._previousHash });
+                this.urlUpdater._previousHash = hash;
+            }).catch();
+        }
+        getLinkToPoint(sitename, latLng, map) {
+            const z = this._map.getZoom().toPrecision(2);
+            const cLat = latLng.lat.toFixed(4);
+            const cLng = latLng.lng.toFixed(4);
+            const overlays = map.layerControl.getOverlays().join("/");
+            const hash = `z=${z}&c=${cLat},${cLng}&l=${overlays}`;
+            return `${sitename}/#${hash}&p=${formatLatLng(latLng, SIGNED_DEGREES).replace(' ', ',')}`;
+        }
     }
-});
-
-L.urlUpddater = function (opts) {
-    return new L.UrlUpdater(opts);
-}
-L.Map.addInitHook('addHandler', 'urlUpdater', L.UrlUpdater);
+    L.UrlUpdater = UrlUpdater;
+    L.Map.mergeOptions({
+        urlUpdater: false
+    });
+    L.Map.addInitHook('addHandler', 'urlUpdater', L.UrlUpdater);
+})(L || (L = {}));
