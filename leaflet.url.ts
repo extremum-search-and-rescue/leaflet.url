@@ -70,7 +70,7 @@ namespace L {
             const cLng = latLng.lng.toFixed(4);
             const overlays = map.layerControl.getOverlays().join("/");
             const hash = `z=${z}&c=${cLat},${cLng}&l=${overlays}`;
-            return `${sitename}/#${hash}&p=${formatLatLng(latLng, SIGNED_DEGREES).replace(' ', ',')}`;
+            return `${sitename}/#${hash}&p=${CoordinateConverter.formatLatLng(latLng, CoordinateConverter.SIGNED_DEGREES).replace(' ', ',')}`;
         }
     }
     L.Map.mergeOptions({
