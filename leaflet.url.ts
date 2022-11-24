@@ -78,7 +78,7 @@ namespace L {
         }
         getLinkToPoint(sitename: string, latLng: L.LatLng) {
             const hash = this._getHash();
-            return `${sitename}/#${hash}&p=${latLng.lat.toFixed(5)},${latLng.lng.toFixed(5)}}`;
+            return `${sitename}/#${hash}&p=${latLng.lat.toFixed(5)},${latLng.lng.toFixed(5)}`;
         }
     }
     L.Map.mergeOptions({
