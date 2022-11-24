@@ -15,41 +15,42 @@ var L;
                 "gis:url:update"
             ];
             const events = this._events.join(" ");
-            this._map.on(events, this.updateUrlOnEvent, this);
+            this._map.on(events, this._updateUrlOnEvent, this);
         }
         removeHooks() {
             const events = this._events.join(" ");
-            this._map.off(events, this.updateUrlOnEvent, this);
+            this._map.off(events, this._updateUrlOnEvent, this);
             this._events = null;
         }
-        updateUrlOnEvent() {
-            new Promise((resolve, reject) => {
-                const mapCenter = this._map.wrapLatLng(this._map.getCenter());
-                const z = this._map.getZoom().toPrecision(2);
-                const cLat = mapCenter.lat.toFixed(4);
-                const cLng = mapCenter.lng.toFixed(4);
-                let overlays = "";
-                if (this._map.layerControl && this._map.layerControl.getOverlays())
-                    overlays = `&l=${this._map.layerControl.getOverlays().join("/")}`;
-                const hash = `z=${z}&c=${cLat},${cLng}${overlays}`;
-                resolve(hash);
-            }).then((hash) => {
+        _getHash() {
+            const mapCenter = this._map.wrapLatLng(this._map.getCenter());
+            const z = this._map.getZoom().toPrecision(2);
+            const cLat = mapCenter.lat.toFixed(4);
+            const cLng = mapCenter.lng.toFixed(4);
+            let overlays = "";
+            if (this._map.layerControl && this._map.layerControl.getOverlays())
+                overlays = `&l=${this._map.layerControl.getOverlays().join("/")}`;
+            return `z=${z}&c=${cLat},${cLng}${overlays}`;
+        }
+        _updateUrlOnEvent() {
+            return new Promise((resolve, reject) => {
+                const hash = this._getHash();
                 if (this._previousHash === hash)
-                    return;
+                    resolve(null);
                 const baseUrl = window.location.href.split('#')[0];
                 window.location.replace(baseUrl + '#' + hash);
                 if (window.localStorage)
                     localStorage.setItem("hash", document.location.hash);
-                this._map.fire('gis:url:changeend', { current: hash, previous: this._previousHash });
+                this._map.fire("gis:url:changeend", {
+                    current: hash,
+                    previous: this._previousHash
+                });
                 this._previousHash = hash;
-            }).catch();
+                resolve(hash);
+            });
         }
-        getLinkToPoint(sitename, latLng, map) {
-            const z = this._map.getZoom().toPrecision(2);
-            const cLat = latLng.lat.toFixed(4);
-            const cLng = latLng.lng.toFixed(4);
-            const overlays = map.layerControl.getOverlays().join("/");
-            const hash = `z=${z}&c=${cLat},${cLng}&l=${overlays}`;
+        getLinkToPoint(sitename, latLng) {
+            const hash = this._getHash();
             return `${sitename}/#${hash}&p=${latLng.lat.toFixed(5)},${latLng.lng.toFixed(5)}}`;
         }
     }
