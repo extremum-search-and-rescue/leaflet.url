@@ -1,16 +1,14 @@
-///<reference path="../type.definitions/index.d.ts" />
-
-declare namespace L { 
-    namespace Control {
-        interface Layers {
-            getOverlays(): string[]
-        }
-    }
-    interface Map {
-        layerControl: L.Control.Layers;
-    }
-}
 namespace L {
+    export interface Map {
+        /* 
+        Controls if map will update page url to with map's current state
+         */
+        urlUpdater?: UrlUpdater;
+    }
+    export interface MapOptions {
+        urlUpdater: boolean;
+    }
+
     export class UrlUpdater extends L.Handler {
         _previousHash: string;
         _map: L.Map;
@@ -21,7 +19,7 @@ namespace L {
             map.urlUpdater = this;
         }
 
-        addHooks(this: UrlUpdater) {
+        override addHooks(this: UrlUpdater) {
             this._events = [
                 "moveend",
                 "baselayerchange",
@@ -38,7 +36,7 @@ namespace L {
             );
         }
 
-        removeHooks(this: UrlUpdater) {
+        override removeHooks(this: UrlUpdater) {
             const events = this._events.join(" ");
             this._map.off(
                 events,
@@ -53,8 +51,8 @@ namespace L {
             const cLat = mapCenter.lat.toFixed(4);
             const cLng = mapCenter.lng.toFixed(4);
             let overlays: string = "";
-            if (this._map.layerControl && this._map.layerControl.getOverlays())
-                overlays = `&l=${this._map.layerControl.getOverlays().join("/")}`;
+            if (this._map.layerControl && this._map.layerControl.getOverlayIds())
+                overlays = `&l=${this._map.layerControl.getOverlayIds().join("/")}`;
 
             return `z=${z}&c=${cLat},${cLng}${overlays}`;
         }
@@ -80,12 +78,37 @@ namespace L {
             const hash = this._getHash();
             return `${sitename}/#${hash}&p=${latLng.lat.toFixed(5)},${latLng.lng.toFixed(5)}`;
         }
+
+        getLinkToLineString(sitename: string, latLngs: L.LatLng[]) {
+            const hash = this._getHash();
+            let lineString = "&ls=";
+            const points = new Array<string>();
+            for (let i = 0; i < latLngs.length; i++) {
+                const latLng = latLngs[i];
+                points.push(`${latLng.lat.toFixed(5)},${latLng.lng.toFixed(5)}`);
+            }
+            lineString += points.join(";");
+            return `${sitename}/#${hash}${lineString}`;
+        }
+
+        getLinkToPolygon(sitename: string, latLngs: L.LatLng[]) {
+            const hash = this._getHash();
+            let polygonString = "&pn=";
+            const points = new Array<string>();
+            for (let i = 0; i < latLngs.length; i++) {
+                const latLng = latLngs[i];
+                points.push(`${latLng.lat.toFixed(5)},${latLng.lng.toFixed(5)}`);
+            }
+            polygonString += points.join(";");
+            return `${sitename}/#${hash}${polygonString}`;
+        }
+
         static getState(
             lochash: string,
             baseMaps: LayerControlGroup,
             overlayMaps: LayerControlGroup,
             defaultMap: LayerControlEntry,
-            defaults
+            defaults: any
         ): MapStateBase {
             const state = new MapStateBase();
 
@@ -94,17 +117,17 @@ namespace L {
             state.zoom = defaults.zoom;
             state.baseLayerTheme = defaults.baseLayerTheme;
             state.selectedLayers = [defaultMap];
+            const queryStringRegEx = /#z=(\d{1,2}[.0-9]*)&c=(-?\d{1,2}\.?\d{0,16}),(-?\d{1,3}\.?\d{0,16})&l=([\w/]*)(&p=(-?\d{1,2}\.?\d{0,16},-?\d{1,3}\.?\d{0,16}[;]?)+)?(&ls=(-?\d{1,2}\.?\d{0,16},-?\d{1,3}\.?\d{0,16}[;]?)+)?(&pn=(-?\d{1,2}\.?\d{0,16},-?\d{1,3}\.?\d{0,16}[;]?)+)?/;
 
-            const queryStringRegEx = lochash.match(/#z=(\d{1,2}[.0-9]*)&c=(-?\d{1,2}\.?\d{0,16}),(-?\d{1,3}\.?\d{0,16})&l=([\w/]*)(&p=(-?\d{1,2}\.?\d{0,16},-?\d{1,3}\.?\d{0,16}[/]?)+)?/);
+            const queryStringMatchArray = lochash.match(queryStringRegEx);
 
-            if (queryStringRegEx) {
-                state.lat = parseFloat(queryStringRegEx[2]);
-                state.lng = parseFloat(queryStringRegEx[3]);
-                state.zoom = parseFloat(queryStringRegEx[1]);
+            if (queryStringMatchArray) {
+                state.lat = parseFloat(queryStringMatchArray[2]);
+                state.lng = parseFloat(queryStringMatchArray[3]);
+                state.zoom = parseFloat(queryStringMatchArray[1]);
 
-                const pointsPart = queryStringRegEx.length >= 6 ? queryStringRegEx[5] : undefined;
                 let proposedLayers: Array<LayerControlEntry> = [];
-                queryStringRegEx[4]
+                queryStringMatchArray[4]
                     .split('/')
                     .forEach(function (l) {
                         const baseMap = Object.entries(baseMaps)
@@ -120,19 +143,39 @@ namespace L {
                     });
                 if (proposedLayers.length > 0)
                     state.selectedLayers = proposedLayers;
-                if (pointsPart) {
-                    const pointsRegEx = pointsPart.match(/(-?\d{1,2}\.?\d{0,16}),(-?\d{1,3}\.?\d{0,16})/);
-                    if (pointsRegEx && pointsRegEx.length === 3)
-                        state.highlightedPoints.push(L.latLng(
-                            parseFloat(pointsRegEx[1]),
-                            parseFloat(pointsRegEx[2]))
-                        );
-                }
-            };
+
+                const points = this.getLngsIfExists(queryStringMatchArray, "&p=");
+                if (points) state.highlightedPoints = points;
+
+                const linePoints = this.getLngsIfExists(queryStringMatchArray, "&ls=");
+                if (linePoints) state.linesFromUrl.push(linePoints);
+
+                const polygonPoints = this.getLngsIfExists(queryStringMatchArray, "&pn=");
+                if (polygonPoints) state.polygonsFromUrl.push(polygonPoints);
+                
+            }
             state.baseLayerTheme = (state.selectedLayers[0] as TileLayer).options.theme;
             return state;
         }
 
+        static getLngsIfExists(matches: RegExpMatchArray, prefix: string): Array<L.LatLng> | null {
+            const retval = new Array<L.LatLng>();
+             
+            const prefixedLatLngsParts = matches.length >= 6 && matches.filter((value, index, array) => value && value.startsWith(prefix));
+            const part = prefixedLatLngsParts && prefixedLatLngsParts.length === 1 && prefixedLatLngsParts[0];
+            if (part) {
+                let match: RegExpExecArray;
+                const latLngs = /((-?\d{1,2}\.?\d{0,16}),(-?\d{1,3}\.?\d{0,16}))[;]?/g;
+
+                while (match = latLngs.exec(part)) {
+                    retval.push(L.latLng(
+                        parseFloat(match[2]),
+                        parseFloat(match[3]))
+                    );
+                }
+            }
+            return retval.length > 0 ? retval : null;
+        }
     }
     type LayerControlEntry = LayerGroup<TileLayer> & { options: { id: string } } | TileLayer | GeoJsonLayer; 
 
@@ -147,17 +190,13 @@ namespace L {
         selectedLayers: Array<LayerControlEntry>;
         baseLayerTheme: string;
         highlightedPoints?: Array<L.LatLng> = []
+        linesFromUrl?: Array<Array<L.LatLng>> = []
+        polygonsFromUrl: Array<Array<L.LatLng>> = []
     }
     L.Map.mergeOptions({
         //disable updateUrlOnEvent by default
         urlUpdater: false
     });
-    export interface Map {
-        //** 
-        /* Controls if map will update page url to with map's current state
-         */
-        urlUpdater?: UrlUpdater;
-    }
 
     L.Map.addInitHook('addHandler', 'urlUpdater', L.UrlUpdater);
 }
