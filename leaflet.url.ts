@@ -31,7 +31,7 @@ namespace L {
             const events = this._events.join(" ");
             this._map.on(
                 events,
-                this._updateUrlOnEvent,
+                L.Util.debounce(this._updateUrlOnEvent, 100),
                 this
             );
         }
@@ -40,7 +40,7 @@ namespace L {
             const events = this._events.join(" ");
             this._map.off(
                 events,
-                this._updateUrlOnEvent,
+                L.Util.debounce(this._updateUrlOnEvent, 100),
                 this
             );
             this._events = null;
@@ -56,23 +56,19 @@ namespace L {
 
             return `z=${z}&c=${cLat},${cLng}${overlays}`;
         }
-        private _updateUrlOnEvent(this: UrlUpdater): Promise<string | null> {
-            return new Promise<string | null>((resolve, reject) => {
-                const hash = this._getHash();
-                if (this._previousHash === hash) resolve(null);
+        private _updateUrlOnEvent(this: UrlUpdater) {
+            const hash = this._getHash();
+            if (this._previousHash === hash) return;
 
-                const baseUrl = window.location.href.split('#')[0];
-                window.location.replace(baseUrl + '#' + hash);
-                if (window.localStorage)
-                    localStorage.setItem("hash", document.location.hash);
-                this._map.fire("gis:url:changeend", {
-                    current: hash,
-                    previous: this._previousHash
-                })
-                this._previousHash = hash;
-
-                resolve(hash);
-            });
+            const baseUrl = window.location.href.split('#')[0];
+            window.location.replace(baseUrl + '#' + hash);
+            if (window.localStorage)
+                localStorage.setItem("hash", document.location.hash);
+            this._map.fire("gis:url:changeend", {
+                current: hash,
+                previous: this._previousHash
+            })
+            this._previousHash = hash;
         }
         getLinkToPoint(sitename: string, latLng: L.LatLng) {
             const hash = this._getHash();
@@ -188,7 +184,7 @@ namespace L {
         latlng: L.LatLng;
         zoom: number;
         selectedLayers: Array<LayerControlEntry>;
-        baseLayerTheme: string;
+        baseLayerTheme: "light" | "dark";
         highlightedPoints?: Array<L.LatLng> = []
         linesFromUrl?: Array<Array<L.LatLng>> = []
         polygonsFromUrl: Array<Array<L.LatLng>> = []
